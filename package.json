@@ -5,7 +5,9 @@
   "main": "server/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "start": "node server/index.js",
+    "db:import": "source .env; psql $DATABASE_URL < database/dump.sql",
+    "db:export": "source .env; pg_dump -c -O $DATABASE_URL > database/dump.sql"
   },
   "repository": {
     "type": "git",
@@ -17,5 +19,12 @@
   "bugs": {
     "url": "https://github.com/David-Lyu/wicked-sales-backend/issues"
   },
-  "homepage": "https://github.com/David-Lyu/wicked-sales-backend#readme"
+  "homepage": "https://github.com/David-Lyu/wicked-sales-backend#readme",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "express-session": "^1.17.2",
+    "pg": "^8.7.1",
+    "session-file-store": "^1.5.0"
+  }
 }
