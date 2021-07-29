@@ -1,5 +1,9 @@
 require('dotenv/config');
 const express = require('express');
+const cors = require('cors');
+// const ipfilter = require('express-ipfilter').IpFilter;
+
+const ips = ['https://lamp-lights-store.netlify.app/'];
 
 const db = require('./database');
 const ClientError = require('./client-error');
@@ -11,12 +15,18 @@ const app = express();
 app.use(staticMiddleware);
 app.use(sessionMiddleware);
 
+const corsOption = {
+  origin: 'https://lamp-lights-store.netlify.app',
+  optionsSuccessStatus: 200
+};
+// app.use(ipfilter(ips, { mode: 'allow' }));
+app.use(cors(corsOption));
 app.use(express.json());
 
 app.get('/api/health-check', (req, res, next) => {
   db.query('select \'successfully connected\' as "message"')
-    .then(result => res.json(result.rows[0]))
-    .catch(err => next(err));
+    .then((result) => res.json(result.rows[0]))
+    .catch((err) => next(err));
 });
 
 app.get('/api/products', (req, res, next) => {
@@ -29,8 +39,8 @@ app.get('/api/products', (req, res, next) => {
       from "products";
   `;
   db.query(sql)
-    .then(results => res.json(results.rows))
-    .catch(err => next(err));
+    .then((results) => res.json(results.rows))
+    .catch((err) => next(err));
 });
 
 app.get('/api/products/:id', (req, res, next) => {
@@ -40,21 +50,19 @@ app.get('/api/products/:id', (req, res, next) => {
       from "products"
       where "productId" = $1;`;
   db.query(sql, parameterizedArray)
-    .then(results => {
+    .then((results) => {
       if (results.rows.length === 0) {
         next(new ClientError(`cannot find id of ${req.params.id}`, 404));
       } else {
         res.json(results.rows[0]);
       }
     })
-    .catch(err => next(err));
+    .catch((err) => next(err));
 });
 
 app.get('/api/cart', (req, res, next) => {
   if (!req.session.cartId) {
-    return (
-      res.status(200).json([])
-    );
+    return res.status(200).json([]);
   }
   const parameterizedArray = [req.session.cartId];
   const sql = `
@@ -68,8 +76,8 @@ app.get('/api/cart', (req, res, next) => {
     join "products" as "p" using ("productId")
   where "cartId" = $1;`;
   db.query(sql, parameterizedArray)
-    .then(results => res.status(200).json(results.rows))
-    .catch(err => next(err));
+    .then((results) => res.status(200).json(results.rows))
+    .catch((err) => next(err));
 });
 
 app.post('/api/cart', (req, res, next) => {
@@ -86,17 +94,16 @@ app.post('/api/cart', (req, res, next) => {
     from "products"
     where "productId" = $1;`;
   db.query(sql1, parameterizedArray)
-    .then(results => {
+    .then((results) => {
       if (!results.rows.length) {
         throw new ClientError(`cannot find id at ${productId}`, 400);
       } else {
-
         let sql2 = null;
         if (req.session.cartId) {
-          return ({
+          return {
             cartId: req.session.cartId,
             price: results.rows[0].price
-          });
+          };
         } else {
           sql2 = `
               insert into "carts" ("cartId","createdAt")
@@ -104,18 +111,15 @@ app.post('/api/cart', (req, res, next) => {
               returning "cartId";`;
         }
 
-        return (
-          db.query(sql2)
-            .then(data => {
-              return {
-                cartId: data.rows[0].cartId,
-                price: results.rows[0].price
-              };
-            })
-        );
+        return db.query(sql2).then((data) => {
+          return {
+            cartId: data.rows[0].cartId,
+            price: results.rows[0].price
+          };
+        });
       }
     })
-    .then(results => {
+    .then((results) => {
       req.session.cartId = results.cartId;
       const parametrizedArray2 = [results.cartId, productId, results.price];
       const sql3 = `
@@ -123,14 +127,11 @@ app.post('/api/cart', (req, res, next) => {
         values($1, $2, $3)
       returning "cartItemId"`;
 
-      return (
-        db.query(sql3, parametrizedArray2)
-          .then(data => {
-            return data.rows[0].cartItemId;
-          })
-      );
+      return db.query(sql3, parametrizedArray2).then((data) => {
+        return data.rows[0].cartItemId;
+      });
     })
-    .then(results => {
+    .then((results) => {
       const parameterizedArray3 = [results];
       const sql4 = `
         select "c"."cartItemId",
@@ -143,34 +144,37 @@ app.post('/api/cart', (req, res, next) => {
           join "products" as "p" using ("productId")
         where "c"."cartItemId" = $1`;
 
-      return (
-        db.query(sql4, parameterizedArray3)
-          .then(data => {
-            res.status(201).json(data.rows[0]);
-          })
-      );
+      return db.query(sql4, parameterizedArray3).then((data) => {
+        res.status(201).json(data.rows[0]);
+      });
     })
-    .catch(err => next(err));
+    .catch((err) => next(err));
 });
 
 app.delete('/api/cart/:cartItemId', (req, res, next) => {
   const cartItemId = req.params.cartItemId;
-  if (!cartItemId) return res.status(404).json({ error: 'cartItemId not found' });
+  if (!cartItemId)
+    return res.status(404).json({ error: 'cartItemId not found' });
   const sql = `
   delete from "cartItems"
   where "cartItemId" = $1
   returning *
   `;
   db.query(sql, [cartItemId])
-    .then(data => res.status(201).json(data.rows))
-    .catch(err => next(err));
+    .then((data) => res.status(201).json(data.rows))
+    .catch((err) => next(err));
 });
 
 app.post('/api/orders', (req, res, next) => {
   if (req.session.cartId) {
     const bodyData = req.body;
     if (bodyData.name && bodyData.creditCard && bodyData.shippingAddress) {
-      const parameterizedArray = [req.session.cartId, bodyData.name, bodyData.creditCard, bodyData.shippingAddress];
+      const parameterizedArray = [
+        req.session.cartId,
+        bodyData.name,
+        bodyData.creditCard,
+        bodyData.shippingAddress
+      ];
       const sql = `
       insert into "orders" ("cartId","name","creditCard","shippingAddress")
         values($1,$2,$3,$4)
@@ -180,13 +184,15 @@ app.post('/api/orders', (req, res, next) => {
                 "creditCard",
                 "shippingAddress";`;
       db.query(sql, parameterizedArray)
-        .then(results => {
-          req.session.destroy(err => console.error(err));
+        .then((results) => {
+          req.session.destroy((err) => console.error(err));
           res.status(201).json(results.rows[0]);
         })
-        .catch(err => next(err));
+        .catch((err) => next(err));
     } else {
-      return res.status(404).json({ error: 'missing name creditcard or shipping address information' });
+      return res.status(404).json({
+        error: 'missing name creditcard or shipping address information'
+      });
     }
   } else {
     return res.status(400).json({ error: 'no cartId on session' });
